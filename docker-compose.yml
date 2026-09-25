@@ -1,0 +1,297 @@
+networks:
+  click_cannabis_net:
+    driver: bridge
+
+volumes:
+  pg_data:
+  redis_data:
+  rabbit_data:
+  localstack_data:
+  uptime_kuma_data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. INFRAESTRUTURA & ARMAZENAMENTO
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: click_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: order_catalog_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - click_cannabis_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d order_catalog_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: click_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - click_cannabis_net
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: click_rabbitmq
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    ports:
+      - "5672:5672"   # Protocolo AMQP
+      - "15672:15672" # Dashboard Web Management
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
+    networks:
+      - click_cannabis_net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: click_localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - AWS_DEFAULT_REGION=us-east-1
+      - PERSISTENCE=1
+    volumes:
+      - localstack_data:/var/lib/localstack
+    networks:
+      - click_cannabis_net
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: click_jaeger
+    restart: always
+    ports:
+      - "16686:16686" # UI do Jaeger Tracing
+      - "4318:4318"   # OTLP HTTP receiver (usado pelo SDK Node)
+    networks:
+      - click_cannabis_net
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: click_uptime_kuma
+    restart: unless-stopped
+    depends_on:
+      - api-gateway-service
+      - order-catalog-service
+      - inventory-service
+      - payment-service
+      - frontend
+      - postgres
+      - redis
+      - rabbitmq
+      - localstack
+      - jaeger
+    ports:
+      - "3002:3001"
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - uptime_kuma_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - click_cannabis_net
+
+  # ---------------------------------------------------------------------------
+  # 2. MICROSERVIÇOS (BACKEND)
+  # ---------------------------------------------------------------------------
+
+  # API Gateway / BFF para front-end
+  api-gateway-service:
+    build:
+      context: ./api-gateway-service
+      dockerfile: Dockerfile
+    container_name: click_api_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: 300
+      ORDER_SERVICE_URL: http://order-catalog-service:3000
+      ORDER_SERVICE_WS_URL: http://order-catalog-service:3000
+      INVENTORY_SERVICE_URL: http://inventory-service:3001
+      PAYMENT_SERVICE_URL: http://payment-service:3333
+      RATE_LIMIT_MAX_REQUESTS: 120
+      RATE_LIMIT_WINDOW_MS: 60000
+    depends_on:
+      - order-catalog-service
+      - inventory-service
+      - payment-service
+    volumes:
+      - ./api-gateway-service:/app
+      - /app/node_modules
+    networks:
+      - click_cannabis_net
+
+  # Microserviço 1: Catálogo, Pedidos, Upload S3 & WebSocket Gateway (NestJS)
+  order-catalog-service:
+    build:
+      context: ./order-catalog-service
+      dockerfile: Dockerfile
+    container_name: click_order_catalog
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: 300
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: root
+      DB_PASS: password
+      DB_NAME: order_catalog_db
+      DATABASE_URL: postgresql://root:password@postgres:5432/order_catalog_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      AWS_ENDPOINT: http://localstack:4566
+      AWS_PUBLIC_ENDPOINT: http://localhost:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      S3_BUCKET_PRESCRIPTIONS: click-prescriptions
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      localstack:
+        condition: service_started
+      jaeger:
+        condition: service_started
+    volumes:
+      - ./order-catalog-service:/app
+      - /app/node_modules
+    networks:
+      - click_cannabis_net
+
+  # Microserviço 2: Worker de Estoque & Reserva Atômica (Node/NestJS)
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    container_name: click_inventory_worker
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: 300
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: root
+      DB_PASS: password
+      DB_NAME: inventory_db
+      DATABASE_URL: postgresql://root:password@postgres:5432/inventory_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./inventory-service:/app
+      - /app/node_modules
+    networks:
+      - click_cannabis_net
+
+  # Microserviço 3: Checkout, Split, Pagamento & Simulador de Status (AdonisJS)
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: click_payment_worker
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    environment:
+      PORT: 3333
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: 300
+      APP_KEY: base64:a0B1c2D3e4F5g6H7i8J9k0L1m2N3o4P5q6R7s8T9u0V=
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: root
+      DB_PASS: password
+      DB_NAME: payment_db
+      DATABASE_URL: postgresql://root:password@postgres:5432/payment_db?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      TRACKING_STAGE_INTERVAL_SECONDS: 60 # Ajustável facilmente para 10s nas demos
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./payment-service:/app
+      - /app/node_modules
+    networks:
+      - click_cannabis_net
+
+  # ---------------------------------------------------------------------------
+  # 3. FRONTEND (React + Tailwind + Lucide + Socket.IO Client)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: click_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8080
+      VITE_WS_URL: http://localhost:8080
+      VITE_USE_MOCK_API: "false"
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: 300
+    depends_on:
+      - api-gateway-service
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - click_cannabis_net
