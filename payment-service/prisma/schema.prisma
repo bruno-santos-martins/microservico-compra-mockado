@@ -7,14 +7,50 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Payment {
-  id          String   @id @default(uuid()) @db.Uuid
-  orderId     String   @db.Uuid
-  amount      Decimal  @db.Decimal(12, 2)
-  status      String
-  providerRef String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
 
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  BOLETO
+}
+
+model Payment {
+  id            String        @id @default(uuid()) @db.Uuid
+  orderId       String        @db.Uuid
+  amount        Decimal       @db.Decimal(12, 2)
+  currency      String        @default("BRL") @db.VarChar(3)
+  status        PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod
+  transactionId String?
+  qrCode        String?       @db.Text
+  qrCodeText    String?       @db.Text
+  failureReason String?       @db.Text
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  splits        PaymentSplit[]
+
+  @@index([orderId])
+  @@index([status, createdAt])
   @@map("payments")
+}
+
+model PaymentSplit {
+  id          String   @id @default(uuid()) @db.Uuid
+  paymentId   String   @db.Uuid
+  recipientId String
+  amount      Decimal  @db.Decimal(12, 2)
+  feeAmount   Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@map("payment_splits")
 }

@@ -7,9 +7,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model ProductInventory {
-  id            String @id @db.Uuid
-  stockQuantity Int
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
 
-  @@map("products")
+enum StockChangeType {
+  INCREMENT
+  DECREMENT
+  RESERVED
+  RELEASED
+}
+
+model Stock {
+  id                String   @id @default(uuid()) @db.Uuid
+  productId         String   @unique @db.Uuid
+  availableQuantity Int      @default(0)
+  reservedQuantity  Int      @default(0)
+  minThreshold      Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@map("stocks")
+}
+
+model StockReservation {
+  id        String            @id @default(uuid()) @db.Uuid
+  orderId   String            @db.Uuid
+  productId String            @db.Uuid
+  quantity  Int
+  status    ReservationStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([status, expiresAt])
+  @@map("stock_reservations")
+}
+
+model StockAuditLog {
+  id         String          @id @default(uuid()) @db.Uuid
+  productId  String          @db.Uuid
+  changeType StockChangeType
+  amount     Int
+  reason     String
+  createdAt  DateTime        @default(now())
+
+  @@index([productId, createdAt])
+  @@map("stock_audit_logs")
 }

@@ -1,0 +1,28 @@
+services:
+  postgres-inventory:
+    image: postgres:15-alpine
+    container_name: click_postgres_inventory
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: inventory_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_inventory_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d inventory_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - click_cannabis_net
+
+volumes:
+  pg_inventory_data:
+
+networks:
+  click_cannabis_net:
+    external: true
+    name: click_cannabis_net

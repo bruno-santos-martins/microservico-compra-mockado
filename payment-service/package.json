@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "infra:up": "docker compose -f ../docker-compose.yml up -d postgres rabbitmq redis",
+    "infra:up": "docker compose -f ../docker-compose.infra.yml up -d && docker compose -f docker-compose.db.yml up -d --wait",
     "predev": "npx kill-port 3333",
     "dev": "npx ts-node-dev --respawn --exit-child --transpile-only --debounce 400 --ignore-watch node_modules --ignore-watch dist app/main.ts",
     "dev:local": "npx ts-node-dev --respawn --exit-child --transpile-only --debounce 400 --ignore-watch node_modules --ignore-watch dist app/main.ts",
@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/app/main.js",
     "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy"
   },

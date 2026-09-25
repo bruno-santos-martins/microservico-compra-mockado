@@ -1,0 +1,28 @@
+services:
+  postgres-orders:
+    image: postgres:15-alpine
+    container_name: click_postgres_orders
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: order_catalog_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_order_catalog_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d order_catalog_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - click_cannabis_net
+
+volumes:
+  pg_order_catalog_data:
+
+networks:
+  click_cannabis_net:
+    external: true
+    name: click_cannabis_net

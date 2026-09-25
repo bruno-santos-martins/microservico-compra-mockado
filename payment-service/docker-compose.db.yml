@@ -1,0 +1,28 @@
+services:
+  postgres-payment:
+    image: postgres:15-alpine
+    container_name: click_postgres_payment
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_payment_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d payment_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - click_cannabis_net
+
+volumes:
+  pg_payment_data:
+
+networks:
+  click_cannabis_net:
+    external: true
+    name: click_cannabis_net

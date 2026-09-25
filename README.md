@@ -4,6 +4,8 @@
 
 Projeto de arquitetura de microservicos com frontend React, API Gateway, servicos de dominio, mensageria e observabilidade.
 
+Cada microsservico possui seu proprio PostgreSQL e volume Docker. Redis, RabbitMQ, LocalStack, Jaeger e Uptime Kuma ficam na infraestrutura compartilhada.
+
 ## Visao Geral
 
 A aplicacao e composta por:
@@ -29,10 +31,7 @@ Na raiz do repositorio:
 yarn.cmd dev
 ```
 
-O script:
-
-1. sobe todos os containers (`docker compose up -d --build`)
-2. tenta rodar migrations Prisma (`yarn migrate`)
+O script sobe a infraestrutura compartilhada, os tres bancos, builda as aplicacoes e aplica o schema Prisma nos bancos.
 
 ## Desenvolvimento Local Sem Container (recomendado para produtividade)
 
@@ -44,7 +43,7 @@ yarn.cmd dev:local
 
 O fluxo faz:
 
-1. sobe apenas infra (`postgres`, `redis`, `rabbitmq`, `localstack`, `jaeger`) com `--wait`
+1. sobe a infraestrutura compartilhada e os tres bancos com `--wait`
 2. para containers de aplicacao para reduzir consumo da maquina
 3. inicia todos os apps locais com portas dedicadas (sem conflito com stack docker)
 
@@ -55,6 +54,9 @@ Portas no modo local:
 - Order Catalog: `http://localhost:13000`
 - Inventory: `http://localhost:13001`
 - Payment: `http://localhost:13333`
+- PostgreSQL Orders: `localhost:5432`
+- PostgreSQL Inventory: `localhost:5433`
+- PostgreSQL Payment: `localhost:5434`
 
 Portas no modo container (com `yarn.cmd dev`) permanecem:
 
@@ -74,6 +76,51 @@ npm.cmd --prefix ./payment-service run dev:bootstrap
 ```
 
 ## Comandos Uteis
+
+### Subida Isolada de Infraestrutura e Bancos
+
+Na raiz do repositorio, crie primeiro a rede compartilhada e inicie a infraestrutura:
+
+```powershell
+docker compose -f docker-compose.infra.yml up -d --wait
+```
+
+Inicie cada banco independentemente (ou execute todos):
+
+```powershell
+docker compose -f order-catalog-service/docker-compose.db.yml up -d --wait
+docker compose -f inventory-service/docker-compose.db.yml up -d --wait
+docker compose -f payment-service/docker-compose.db.yml up -d --wait
+```
+
+Para iniciar todos os bancos pelo script da raiz: `yarn.cmd db:up`.
+
+Os exemplos de conexao estao em `order-catalog-service/.env.example`, `inventory-service/.env.example` e `payment-service/.env.example`. Copie o exemplo para `.env` somente se ainda nao existir; se ja houver um `.env` local, ajuste nele a URL do banco correspondente sem substituir as demais configuracoes.
+
+Nota de compatibilidade: o CRUD atual de `order-catalog-service` e `inventory-service` ainda usa TypeORM com `synchronize: true`; os schemas Prisma acima definem o alvo das migrations Prisma, mas ainda nao substituem os models/repositorios TypeORM desses servicos. A conversao dos CRUDs para Prisma precisa ser feita separadamente antes de tratar as migrations Prisma como schema de runtime desses dois servicos.
+
+Com os bancos iniciados, rode a migration interativamente em cada projeto. `db push` e uma alternativa sem historico de migrations:
+
+```powershell
+Set-Location order-catalog-service
+npx prisma migrate dev --name init
+# Alternativa: npx prisma db push
+Set-Location ..
+
+Set-Location inventory-service
+npx prisma migrate dev --name init
+# Alternativa: npx prisma db push
+Set-Location ..
+
+Set-Location payment-service
+npx prisma migrate dev --name init
+# Alternativa: npx prisma db push
+Set-Location ..
+```
+
+Os comandos tambem estao disponiveis como scripts: `npm.cmd run prisma:migrate` ou `npm.cmd run prisma:push`, executados dentro da pasta de cada servico.
+
+Para build e execucao containerizada das aplicacoes, use `yarn.cmd containers:up`; os Compose dos bancos e da infraestrutura permanecem separados.
 
 ```bash
 # sobe com logs anexados (foreground)
@@ -129,14 +176,26 @@ yarn.cmd logs:frontend
 - Jaeger (http://localhost:16686)
 	- sem autenticacao
 
-### Banco e Mensageria
+### Bancos por Microsservico e Mensageria
 
-- PostgreSQL
+- PostgreSQL Orders
 	- host: `localhost`
 	- porta: `5432`
 	- usuario: `root`
 	- senha: `password`
-	- bancos: `order_catalog_db`, `inventory_db`, `payment_db`
+	- banco: `order_catalog_db`
+- PostgreSQL Inventory
+	- host: `localhost`
+	- porta: `5433`
+	- usuario: `root`
+	- senha: `password`
+	- banco: `inventory_db`
+- PostgreSQL Payment
+	- host: `localhost`
+	- porta: `5434`
+	- usuario: `root`
+	- senha: `password`
+	- banco: `payment_db`
 - RabbitMQ AMQP
 	- host: `localhost`
 	- porta: `5672`
@@ -151,7 +210,9 @@ yarn.cmd logs:frontend
 
 ### Portas tecnicas
 
-- PostgreSQL: `localhost:5432`
+- PostgreSQL Orders: `localhost:5432`
+- PostgreSQL Inventory: `localhost:5433`
+- PostgreSQL Payment: `localhost:5434`
 - Redis: `localhost:6379`
 - RabbitMQ AMQP: `localhost:5672`
 - OTLP HTTP receiver (Jaeger): `localhost:4318`
