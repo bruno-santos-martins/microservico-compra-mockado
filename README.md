@@ -1,4 +1,6 @@
-# Microservices Demo - Click Cannabis
+# microservico-compra-mockado
+
+## Microservices Demo - Click Cannabis
 
 Projeto de arquitetura de microservicos com frontend React, API Gateway, servicos de dominio, mensageria e observabilidade.
 
