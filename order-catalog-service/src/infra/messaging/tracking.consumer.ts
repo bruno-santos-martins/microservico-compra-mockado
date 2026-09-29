@@ -49,26 +49,32 @@ export class TrackingConsumer implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    const connection = await this.connectWithRetry();
-    const channel = await connection.createChannel();
-    const queue = 'tracking.updates';
-    await channel.assertQueue(queue, { durable: true });
+    try {
+      const connection = await this.connectWithRetry();
+      const channel = await connection.createChannel();
+      const queue = 'tracking.updates';
+      await channel.assertQueue(queue, { durable: true });
 
-    await channel.consume(queue, async (message) => {
-      if (!message) return;
+      await channel.consume(queue, async (message) => {
+        if (!message) return;
 
-      try {
-        const payload = JSON.parse(message.content.toString()) as TrackingCheckpoint;
-        await this.orderRepository.saveCheckpoint(payload);
-        await this.cache.set(`tracking:${payload.trackingCode}`, JSON.stringify([payload]), 60);
-        this.gateway.emitTrackingUpdate(payload);
-        channel.ack(message);
-      } catch (error) {
-        this.logger.error(`Failed to process tracking update: ${(error as Error).message}`);
-        channel.nack(message, false, false);
-      }
-    });
+        try {
+          const payload = JSON.parse(message.content.toString()) as TrackingCheckpoint;
+          await this.orderRepository.saveCheckpoint(payload);
+          await this.cache.set(`tracking:${payload.trackingCode}`, JSON.stringify([payload]), 60);
+          this.gateway.emitTrackingUpdate(payload);
+          channel.ack(message);
+        } catch (error) {
+          this.logger.error(`Failed to process tracking update: ${(error as Error).message}`);
+          channel.nack(message, false, false);
+        }
+      });
 
-    this.logger.log('Tracking consumer is listening on tracking.updates');
+      this.logger.log('Tracking consumer is listening on tracking.updates');
+    } catch (error) {
+      this.logger.warn(
+        `RabbitMQ is unavailable. API will continue without tracking consumer: ${(error as Error).message}`
+      );
+    }
   }
 }

@@ -1,11 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import amqp, { Channel, Connection } from 'amqplib';
+import amqp, { Channel, ChannelModel } from 'amqplib';
 import type { MessageBusPort } from '../../domain/ports/message-bus.port';
 
 @Injectable()
 export class RabbitMQProducer implements MessageBusPort, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQProducer.name);
-  private connection?: Connection;
+  private connection?: ChannelModel;
   private channel?: Channel;
 
   private getConnectionCandidates(): string[] {
@@ -20,7 +20,7 @@ export class RabbitMQProducer implements MessageBusPort, OnModuleDestroy {
     return [...new Set(candidates)];
   }
 
-  private async connectWithRetry(): Promise<Connection> {
+  private async connectWithRetry(): Promise<ChannelModel> {
     const candidates = this.getConnectionCandidates();
     let lastError: Error | null = null;
 

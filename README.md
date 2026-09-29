@@ -120,11 +120,11 @@ Set-Location ..
 
 Os comandos tambem estao disponiveis como scripts: `npm.cmd run prisma:migrate` ou `npm.cmd run prisma:push`, executados dentro da pasta de cada servico.
 
-Para build e execucao containerizada das aplicacoes, use `yarn.cmd containers:up`; os Compose dos bancos e da infraestrutura permanecem separados.
+As aplicacoes rodam localmente (incluindo frontend). Em Docker ficam apenas infraestrutura e bancos.
 
 ```bash
-# sobe com logs anexados (foreground)
-yarn.cmd dev:attach
+# sobe infra + bancos e inicia todos os apps localmente
+yarn.cmd dev:local
 
 # status dos servicos
 yarn.cmd status
@@ -138,12 +138,8 @@ yarn.cmd down
 # logs de tudo
 yarn.cmd logs
 
-# logs por servico
-yarn.cmd logs:api
-yarn.cmd logs:order
-yarn.cmd logs:inventory
-yarn.cmd logs:payment
-yarn.cmd logs:frontend
+# logs por servico de infraestrutura (docker)
+yarn.cmd logs
 ```
 
 ## Links de Acesso

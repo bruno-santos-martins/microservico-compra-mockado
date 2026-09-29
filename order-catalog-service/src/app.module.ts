@@ -15,6 +15,9 @@ import { OrderController } from './infra/http/controllers/order.controller';
 import { HealthyController } from './infra/http/controllers/healthy.controller';
 import { CreateProductUseCase } from './application/use-cases/create-product.use-case';
 import { ListProductsUseCase } from './application/use-cases/list-products.use-case';
+import { GetProductUseCase } from './application/use-cases/get-product.use-case';
+import { UpdateProductUseCase } from './application/use-cases/update-product.use-case';
+import { DeleteProductUseCase } from './application/use-cases/delete-product.use-case';
 import { UploadPrescriptionUseCase } from './application/use-cases/upload-prescription.use-case';
 import { RequestCheckoutUseCase } from './application/use-cases/request-checkout.use-case';
 import { GetTrackingUseCase } from './application/use-cases/get-tracking.use-case';
@@ -49,6 +52,9 @@ import { RedisCacheService } from './infra/cache/redis-cache.service';
     TrackingConsumer,
     CreateProductUseCase,
     ListProductsUseCase,
+    GetProductUseCase,
+    UpdateProductUseCase,
+    DeleteProductUseCase,
     UploadPrescriptionUseCase,
     RequestCheckoutUseCase,
     GetTrackingUseCase,

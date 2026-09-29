@@ -1,5 +1,5 @@
 import './tracing';
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
@@ -10,6 +10,9 @@ import { Server } from 'socket.io';
 import { io as ioClient, Socket } from 'socket.io-client';
 // @ts-ignore - local environment may not have swagger-ui-express declarations installed.
 const swaggerUi = require('swagger-ui-express');
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "npx kill-port 8080",
+    "predev:local": "npx kill-port 8080",
     "dev": "ts-node-dev --respawn --exit-child --transpile-only --debounce 400 --ignore-watch node_modules --ignore-watch dist src/main.ts",
     "dev:local": "ts-node-dev --respawn --exit-child --transpile-only --debounce 400 --ignore-watch node_modules --ignore-watch dist src/main.ts",
     "build": "tsc -p tsconfig.json",

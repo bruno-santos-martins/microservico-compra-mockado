@@ -1,8 +1,12 @@
 import './tracing';
+import dotenv from 'dotenv';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

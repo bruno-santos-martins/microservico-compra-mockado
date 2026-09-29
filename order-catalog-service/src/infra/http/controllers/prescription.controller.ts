@@ -8,13 +8,20 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadPrescriptionUseCase } from '../../../application/use-cases/upload-prescription.use-case';
 
+interface UploadedPrescriptionFile {
+  originalname: string;
+  buffer: Buffer;
+  mimetype?: string;
+  size?: number;
+}
+
 @Controller('prescriptions')
 export class PrescriptionController {
   constructor(private readonly uploadPrescriptionUseCase: UploadPrescriptionUseCase) {}
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
-  async upload(@UploadedFile() file?: Express.Multer.File) {
+  async upload(@UploadedFile() file?: UploadedPrescriptionFile) {
     if (!file) {
       throw new BadRequestException('File is required.');
     }

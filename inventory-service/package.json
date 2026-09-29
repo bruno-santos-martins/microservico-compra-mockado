@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "infra:up": "docker compose -f ../docker-compose.infra.yml up -d && docker compose -f docker-compose.db.yml up -d --wait",
     "predev": "npx kill-port 3001",
+    "predev:local": "docker compose -f docker-compose.db.yml up -d --wait && npx kill-port 3001",
     "dev": "ts-node-dev --respawn --exit-child --transpile-only --debounce 400 --ignore-watch node_modules --ignore-watch dist src/main.ts",
     "dev:local": "ts-node-dev --respawn --exit-child --transpile-only --debounce 400 --ignore-watch node_modules --ignore-watch dist src/main.ts",
     "build": "tsc -p tsconfig.json",

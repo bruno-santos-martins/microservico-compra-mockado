@@ -1,10 +1,20 @@
 import './tracing';
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from 'express';
 import type { Server as HttpServer } from 'http';
 import { RabbitWorker } from './infra/workers/rabbit.worker';
 import { prisma } from './infra/database/prisma';
 import swaggerUi from 'swagger-ui-express';
+import { PaymentRepository } from './infra/database/payment.repository';
+import { CreatePaymentUseCase } from './application/use_cases/create-payment.use-case';
+import { ListPaymentsUseCase } from './application/use_cases/list-payments.use-case';
+import { GetPaymentUseCase } from './application/use_cases/get-payment.use-case';
+import { UpdatePaymentUseCase } from './application/use_cases/update-payment.use-case';
+import { DeletePaymentUseCase } from './application/use_cases/delete-payment.use-case';
+import type { CreatePaymentInput, UpdatePaymentInput } from './domain/ports/payment-repository.port';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const openApiSpec = {
   openapi: '3.0.3',
@@ -31,8 +41,76 @@ const openApiSpec = {
         },
       },
     },
+    '/payments': {
+      get: {
+        summary: 'List payments',
+        responses: { '200': { description: 'Payments list' } },
+      },
+      post: {
+        summary: 'Create payment',
+        responses: { '201': { description: 'Payment created' } },
+      },
+    },
+    '/payments/{id}': {
+      get: {
+        summary: 'Get payment by id',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Payment found' }, '404': { description: 'Not found' } },
+      },
+      patch: {
+        summary: 'Update payment by id',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '200': { description: 'Payment updated' }, '404': { description: 'Not found' } },
+      },
+      delete: {
+        summary: 'Delete payment by id',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+        responses: { '204': { description: 'Payment deleted' }, '404': { description: 'Not found' } },
+      },
+    },
   },
 } as const;
+
+function parseCreatePaymentBody(body: Record<string, unknown>): CreatePaymentInput {
+  if (typeof body.orderId !== 'string' || body.orderId.length === 0) {
+    throw new Error('orderId is required and must be a string.');
+  }
+  if (typeof body.amount !== 'number' || Number.isNaN(body.amount) || body.amount < 0) {
+    throw new Error('amount is required and must be a non-negative number.');
+  }
+  if (typeof body.status !== 'string' || body.status.length === 0) {
+    throw new Error('status is required and must be a non-empty string.');
+  }
+
+  return {
+    orderId: body.orderId,
+    amount: body.amount,
+    status: body.status,
+    providerRef: typeof body.providerRef === 'string' ? body.providerRef : undefined,
+  };
+}
+
+function parseUpdatePaymentBody(body: Record<string, unknown>): UpdatePaymentInput {
+  const input: UpdatePaymentInput = {};
+
+  if (body.amount !== undefined) {
+    if (typeof body.amount !== 'number' || Number.isNaN(body.amount) || body.amount < 0) {
+      throw new Error('amount must be a non-negative number.');
+    }
+    input.amount = body.amount;
+  }
+  if (body.status !== undefined) {
+    if (typeof body.status !== 'string' || body.status.length === 0) {
+      throw new Error('status must be a non-empty string.');
+    }
+    input.status = body.status;
+  }
+  if (body.providerRef !== undefined) {
+    input.providerRef = body.providerRef === null ? null : String(body.providerRef);
+  }
+
+  return input;
+}
 
 async function bootstrap() {
   const app = express();
@@ -42,12 +120,68 @@ async function bootstrap() {
   });
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
+  const paymentRepository = new PaymentRepository();
+  const createPaymentUseCase = new CreatePaymentUseCase(paymentRepository);
+  const listPaymentsUseCase = new ListPaymentsUseCase(paymentRepository);
+  const getPaymentUseCase = new GetPaymentUseCase(paymentRepository);
+  const updatePaymentUseCase = new UpdatePaymentUseCase(paymentRepository);
+  const deletePaymentUseCase = new DeletePaymentUseCase(paymentRepository);
+
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
 
   app.get('/healthy', (_req, res) => {
     res.json({ status: 'ok', service: 'payment-service' });
+  });
+
+  app.post('/payments', async (req, res) => {
+    try {
+      const payload = parseCreatePaymentBody((req.body ?? {}) as Record<string, unknown>);
+      const created = await createPaymentUseCase.execute(payload);
+      res.status(201).json(created);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid request';
+      res.status(400).json({ message });
+    }
+  });
+
+  app.get('/payments', async (_req, res) => {
+    const items = await listPaymentsUseCase.execute();
+    res.json(items);
+  });
+
+  app.get('/payments/:id', async (req, res) => {
+    const item = await getPaymentUseCase.execute(req.params.id);
+    if (!item) {
+      res.status(404).json({ message: `Payment ${req.params.id} not found.` });
+      return;
+    }
+    res.json(item);
+  });
+
+  app.patch('/payments/:id', async (req, res) => {
+    try {
+      const payload = parseUpdatePaymentBody((req.body ?? {}) as Record<string, unknown>);
+      const updated = await updatePaymentUseCase.execute(req.params.id, payload);
+      if (!updated) {
+        res.status(404).json({ message: `Payment ${req.params.id} not found.` });
+        return;
+      }
+      res.json(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid request';
+      res.status(400).json({ message });
+    }
+  });
+
+  app.delete('/payments/:id', async (req, res) => {
+    const deleted = await deletePaymentUseCase.execute(req.params.id);
+    if (!deleted) {
+      res.status(404).json({ message: `Payment ${req.params.id} not found.` });
+      return;
+    }
+    res.status(204).send();
   });
 
   await prisma.$connect();

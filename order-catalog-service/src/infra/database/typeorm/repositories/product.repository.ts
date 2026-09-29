@@ -32,4 +32,26 @@ export class ProductRepository implements ProductRepositoryPort {
     if (!ids.length) return [];
     return this.productRepo.find({ where: { id: In(ids) } });
   }
+
+  async findById(id: string): Promise<ProductEntity | null> {
+    return this.productRepo.findOne({ where: { id } });
+  }
+
+  async update(
+    id: string,
+    input: Partial<Omit<ProductEntity, 'id' | 'createdAt'>>
+  ): Promise<ProductEntity | null> {
+    const existing = await this.productRepo.findOne({ where: { id } });
+    if (!existing) {
+      return null;
+    }
+
+    const merged = this.productRepo.merge(existing, input);
+    return this.productRepo.save(merged);
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const result = await this.productRepo.delete({ id });
+    return (result.affected ?? 0) > 0;
+  }
 }

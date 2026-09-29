@@ -1,7 +1,7 @@
-import amqp, { Channel, Connection } from 'amqplib';
+import amqp, { Channel, ChannelModel } from 'amqplib';
 
 export class RabbitMQProducer {
-  private connection?: Connection;
+  private connection?: ChannelModel;
   private channel?: Channel;
 
   private async getChannel(): Promise<Channel> {
